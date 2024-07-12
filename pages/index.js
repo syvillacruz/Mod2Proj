@@ -1,117 +1,155 @@
-import {useState, useEffect} from "react";
-import {ethers} from "ethers";
-import atm_abi from "../artifacts/contracts/Assessment.sol/Assessment.json";
+import React, { useState, useEffect } from "react";
+import { ethers } from "ethers";
+import AssessmentABI from "../artifacts/contracts/Assessment.sol/Assessment.json";
 
-export default function HomePage() {
+const contractAddress = "0x4A679253410272dd5232B3Ff7cF5dbB88f295319";
+const assessmentABI = AssessmentABI.abi;
+
+const HomePage = () => {
   const [ethWallet, setEthWallet] = useState(undefined);
   const [account, setAccount] = useState(undefined);
-  const [atm, setATM] = useState(undefined);
+  const [atmContract, setAtmContract] = useState(undefined);
   const [balance, setBalance] = useState(undefined);
+  const [betOutcome, setBetOutcome] = useState(undefined);
+  const [randomNumber, setRandomNumber] = useState(undefined);
 
-  const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
-  const atmABI = atm_abi.abi;
+  useEffect(() => {
+    const loadBlockchainData = async () => {
+      if (window.ethereum) {
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const signer = provider.getSigner();
+        const contract = new ethers.Contract(contractAddress, assessmentABI, signer);
 
-  const getWallet = async() => {
-    if (window.ethereum) {
-      setEthWallet(window.ethereum);
-    }
+        setEthWallet(window.ethereum);
+        setAtmContract(contract);
 
-    if (ethWallet) {
-      const account = await ethWallet.request({method: "eth_accounts"});
-      handleAccount(account);
-    }
-  }
+        const accounts = await window.ethereum.request({ method: "eth_accounts" });
+        setAccount(accounts[0]);
 
-  const handleAccount = (account) => {
-    if (account) {
-      console.log ("Account connected: ", account);
-      setAccount(account);
-    }
-    else {
-      console.log("No account found");
-    }
-  }
+        const balance = await provider.getBalance(accounts[0]);
+        setBalance(ethers.utils.formatEther(balance));
+      } else {
+        alert("MetaMask wallet not detected. Please install MetaMask to use this application.");
+      }
+    };
 
-  const connectAccount = async() => {
-    if (!ethWallet) {
-      alert('MetaMask wallet is required to connect');
-      return;
+    loadBlockchainData();
+  }, []);
+
+  const handleDeposit = async () => {
+    if (atmContract) {
+      try {
+        const tx = await atmContract.deposit({ value: ethers.utils.parseEther("1") });
+        await tx.wait();
+        updateBalance();
+      } catch (error) {
+        console.error("Error depositing:", error);
+      }
     }
-  
-    const accounts = await ethWallet.request({ method: 'eth_requestAccounts' });
-    handleAccount(accounts);
-    
-    // once wallet is set we can get a reference to our deployed contract
-    getATMContract();
   };
 
-  const getATMContract = () => {
-    const provider = new ethers.providers.Web3Provider(ethWallet);
-    const signer = provider.getSigner();
-    const atmContract = new ethers.Contract(contractAddress, atmABI, signer);
- 
-    setATM(atmContract);
-  }
-
-  const getBalance = async() => {
-    if (atm) {
-      setBalance((await atm.getBalance()).toNumber());
+  const handlePlaceBet = async () => {
+    if (atmContract) {
+      try {
+        const tx = await atmContract.placeBet({ value: ethers.utils.parseEther("1") });
+        await tx.wait();
+        updateBalance();
+        const betResult = await atmContract.betOutcome();
+        setBetOutcome(betResult === 1 ? "You win!" : "You lose!");
+        const randomNum = await atmContract.lastRandomNumber();
+        setRandomNumber(randomNum.toNumber());
+      } catch (error) {
+        console.error("Error placing bet:", error);
+      }
     }
-  }
+  };
 
-  const deposit = async() => {
-    if (atm) {
-      let tx = await atm.deposit(1);
-      await tx.wait()
-      getBalance();
+  const updateBalance = async () => {
+    if (account) {
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const balance = await provider.getBalance(account);
+      setBalance(ethers.utils.formatEther(balance));
     }
-  }
+  };
 
-  const withdraw = async() => {
-    if (atm) {
-      let tx = await atm.withdraw(1);
-      await tx.wait()
-      getBalance();
-    }
-  }
-
-  const initUser = () => {
-    // Check to see if user has Metamask
+  const renderContent = () => {
     if (!ethWallet) {
-      return <p>Please install Metamask in order to use this ATM.</p>
+      return <p>Please install MetaMask to use this application.</p>;
+    } else if (!account) {
+      return (
+        <button onClick={() => window.ethereum.request({ method: "eth_requestAccounts" })}>
+          Connect MetaMask Wallet
+        </button>
+      );
+    } else {
+      return (
+        <div className="casino-container">
+          <h1>WELCOME TO THE BETTING GAME!</h1>
+          <div className="game-area">
+            <p>Your Account: {account}</p>
+            <p>Your Balance: {balance} ETH</p>
+            <button className="bet-button" onClick={handlePlaceBet}>Place Bet (1 ETH)</button>
+            {betOutcome && <p className="outcome">{betOutcome}</p>}
+            {randomNumber !== undefined && (
+              <p className="random-number">Random Number: {randomNumber}</p>
+            )}
+          </div>
+          <style jsx>{`
+            h1{
+              color: #FF0000
+            }
+            .casino-container {
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              height: 100vh;
+              background-color: #173518;
+            }
+            .game-area {
+              background-color: #fff;
+              padding: 20px;
+              border-radius: 8px;
+              box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+              text-align: center;
+              max-width: 400px;
+              width: 100%;
+            }
+            .bet-button {
+              background-color: #007bff;
+              color: #fff;
+              border: none;
+              padding: 10px 20px;
+              margin-top: 20px;
+              font-size: 16px;
+              cursor: pointer;
+              border-radius: 4px;
+              transition: background-color 0.3s ease;
+            }
+            .bet-button:hover {
+              background-color: #0056b3;
+            }
+            .outcome {
+              font-size: 18px;
+              margin-top: 20px;
+              font-weight: bold;
+              color: #dc3545;
+            }
+            .random-number {
+              margin-top: 20px;
+              font-size: 18px;
+            }
+          `}</style>
+        </div>
+      );
     }
-
-    // Check to see if user is connected. If not, connect to their account
-    if (!account) {
-      return <button onClick={connectAccount}>Please connect your Metamask wallet</button>
-    }
-
-    if (balance == undefined) {
-      getBalance();
-    }
-
-    return (
-      <div>
-        <p>Your Account: {account}</p>
-        <p>Your Balance: {balance}</p>
-        <button onClick={deposit}>Deposit 1 ETH</button>
-        <button onClick={withdraw}>Withdraw 1 ETH</button>
-      </div>
-    )
-  }
-
-  useEffect(() => {getWallet();}, []);
+  };
 
   return (
     <main className="container">
-      <header><h1>Welcome to the Metacrafters ATM!</h1></header>
-      {initUser()}
-      <style jsx>{`
-        .container {
-          text-align: center
-        }
-      `}
-      </style>
+      {renderContent()}
     </main>
-  )
-}
+  );
+};
+
+export default HomePage;
